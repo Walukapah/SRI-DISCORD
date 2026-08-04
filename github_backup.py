@@ -3,6 +3,9 @@ import json
 import base64
 from github import Github
 
+# ============================================
+# GITHUB CONFIG - CHANGE ONLY HERE
+# ============================================
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "")
 GITHUB_OWNER = os.getenv("GITHUB_REPO_OWNER", "Walukapah")
 GITHUB_REPO = os.getenv("GITHUB_REPO_NAME", "SRI-DISCORD-BOT")
