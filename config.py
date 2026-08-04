@@ -12,8 +12,9 @@ CONFIGS_DIR = BASE_DIR / "configs"
 CONFIGS_DIR.mkdir(exist_ok=True)
 
 # Base config - Main bot
+# ⚠️ MAIN_BOT_TOKEN env variable එක ඇතුල් කරන්න ඕන!
 BASE_CONFIG = {
-    "MAIN_BOT_TOKEN": os.getenv("MAIN_BOT_TOKEN", "MTQzMzExMDMwNzM1NzcyMDY5Nw.GFKSjG.8DI8-72_EKiE7IYkhddWh_5RKDogCKYX8Z4Eq8"),
+    "MAIN_BOT_TOKEN": os.getenv("MAIN_BOT_TOKEN", ""),
     "PREFIX": os.getenv("PREFIX", "."),
     "BOT_NAME": os.getenv("BOT_NAME", "SRI-DISCORD-BOT"),
     "OWNER_ID": os.getenv("OWNER_ID", ""),
