@@ -11,17 +11,6 @@ COPY . .
 # Create configs directory
 RUN mkdir -p configs sessions
 
-# Environment variables
-ENV PYTHONUNBUFFERED=1
-ENV MAIN_BOT_TOKEN=""
-ENV GITHUB_TOKEN=""
-ENV GITHUB_REPO_OWNER="Walukapah"
-ENV GITHUB_REPO_NAME="SRI-DISCORD-BOT"
-ENV PREFIX="."
-ENV BOT_NAME="SRI-DISCORD-BOT"
-ENV OWNER_ID=""
-ENV MODE="public"
-
 # Expose port
 EXPOSE 7860
 
