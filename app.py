@@ -129,7 +129,7 @@ class MainBot(commands.Bot):
         
         # Validate token format
         if not token or len(token) < 50:
-            await interaction.followup.send("❌ Invalid bot token!", ephemeral=True)
+            await interaction.followup.send("❌ Invalid bot token! Token must be at least 50 characters.", ephemeral=True)
             return
         
         bot_id = config_manager.get_bot_id(token)
@@ -176,8 +176,16 @@ class MainBot(commands.Bot):
                 f"Bot {bot_id} connected by {interaction.user.name}"
             )
             
+        except discord.LoginFailure:
+            config_manager.delete_config(bot_id)
+            await interaction.followup.send(
+                f"❌ **Invalid bot token!** Please check your token and try again.\n"
+                f"Get your token from: https://discord.com/developers/applications",
+                ephemeral=True
+            )
         except Exception as e:
             print(f"[MAIN] Failed to start sub-bot: {e}")
+            config_manager.delete_config(bot_id)
             await interaction.followup.send(
                 f"❌ Failed to connect bot: `{str(e)}`",
                 ephemeral=True
@@ -272,10 +280,35 @@ class MainBot(commands.Bot):
             return
         print(f"[MAIN] Error: {error}")
 
-def run_main_bot():
-    token = BASE_CONFIG.get("MAIN_BOT_TOKEN")
+def validate_token(token: str) -> bool:
+    """Basic token validation"""
     if not token:
-        print("[MAIN] ERROR: MAIN_BOT_TOKEN not set in config!")
+        return False
+    # Discord tokens are typically 59+ chars and have 2 dots
+    parts = token.split('.')
+    if len(parts) != 3:
+        return False
+    if len(token) < 50:
+        return False
+    return True
+
+def run_main_bot():
+    token = BASE_CONFIG.get("MAIN_BOT_TOKEN", "")
+    
+    if not token:
+        print("=" * 60)
+        print("[MAIN] ERROR: MAIN_BOT_TOKEN not set!")
+        print("[MAIN] Please set the MAIN_BOT_TOKEN environment variable.")
+        print("[MAIN] Get your token from: https://discord.com/developers/applications")
+        print("=" * 60)
+        sys.exit(1)
+    
+    if not validate_token(token):
+        print("=" * 60)
+        print("[MAIN] ERROR: MAIN_BOT_TOKEN format looks invalid!")
+        print("[MAIN] Token should be like: Mxxxxxxxxxxxxxxxxxxxxxxxxxx.xxxxxx.xxxxxxxxxxxxxxxxxxxxxxxxxxx")
+        print("[MAIN] Please check your token.")
+        print("=" * 60)
         sys.exit(1)
     
     bot = MainBot()
