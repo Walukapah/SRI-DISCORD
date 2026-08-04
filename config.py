@@ -3,15 +3,13 @@ import json
 import hashlib
 from pathlib import Path
 
+# Import GitHub config from github_backup.py (single source of truth)
+from github_backup import GITHUB_TOKEN, GITHUB_OWNER, GITHUB_REPO
+
 # Base directory
 BASE_DIR = Path(__file__).parent
 CONFIGS_DIR = BASE_DIR / "configs"
 CONFIGS_DIR.mkdir(exist_ok=True)
-
-# GitHub settings from env
-GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "")
-GITHUB_OWNER = os.getenv("GITHUB_REPO_OWNER", "Walukapah")
-GITHUB_REPO = os.getenv("GITHUB_REPO_NAME", "SRI-DISCORD-BOT")
 
 # Base config - Main bot
 BASE_CONFIG = {
@@ -19,7 +17,7 @@ BASE_CONFIG = {
     "PREFIX": os.getenv("PREFIX", "."),
     "BOT_NAME": os.getenv("BOT_NAME", "SRI-DISCORD-BOT"),
     "OWNER_ID": os.getenv("OWNER_ID", ""),
-    "MODE": os.getenv("MODE", "public"),  # public, private
+    "MODE": os.getenv("MODE", "public"),
     "VERSION": "1.0.0",
     "AUTO_STATUS": os.getenv("AUTO_STATUS", "true"),
 }
@@ -28,6 +26,8 @@ class ConfigManager:
     def __init__(self):
         self.configs = {}  # In-memory cache
         self.github = None
+        self.repo = None
+        
         if GITHUB_TOKEN:
             try:
                 from github import Github
@@ -154,7 +154,7 @@ class ConfigManager:
         return None
     
     def _backup_to_github(self, bot_id: str, config: dict):
-        if not self.github:
+        if not self.repo:
             return
         
         try:
@@ -162,7 +162,6 @@ class ConfigManager:
             content = json.dumps(config, indent=2)
             content_b64 = __import__('base64').b64encode(content.encode()).decode()
             
-            # Try to get existing file SHA
             sha = None
             try:
                 file = self.repo.get_contents(path)
@@ -188,7 +187,7 @@ class ConfigManager:
             print(f"[GITHUB] Backup failed: {e}")
     
     def _load_from_github(self, bot_id: str) -> dict:
-        if not self.github:
+        if not self.repo:
             return None
         
         try:
@@ -201,7 +200,7 @@ class ConfigManager:
             return None
     
     def _delete_from_github(self, bot_id: str):
-        if not self.github:
+        if not self.repo:
             return
         
         try:
