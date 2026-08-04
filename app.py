@@ -8,7 +8,7 @@ import threading
 # ============================================
 # CONFIG - Environment variable එකෙන් ගන්නවා
 # ============================================
-TOKEN = os.getenv("DISCORD_TOKEN", "MTQzMzExMDMwNzM1NzcyMDY5Nw.GFKSjG.8DI8-72_EKiE7IYkhddWh_5RKDogCKYX8Z4Eq8").strip()
+TOKEN = os.getenv("DISCORD_TOKEN", "MTQzMzExMDMwNzM1NzcyMDY5Nw.GET56c.p65YfbZcg4rn200mjqNfA-lySEKefG_dZqg900").strip()
 
 # ============================================
 # HTTP SERVER - Render එක happy තියන්න
