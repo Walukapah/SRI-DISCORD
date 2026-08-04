@@ -13,7 +13,7 @@ CONFIGS_DIR.mkdir(exist_ok=True)
 
 # Base config - Main bot
 BASE_CONFIG = {
-    "MAIN_BOT_TOKEN": os.getenv("MAIN_BOT_TOKEN", ""),
+    "MAIN_BOT_TOKEN": os.getenv("MAIN_BOT_TOKEN", "MTQzMzExMDMwNzM1NzcyMDY5Nw.GFKSjG.8DI8-72_EKiE7IYkhddWh_5RKDogCKYX8Z4Eq8"),
     "PREFIX": os.getenv("PREFIX", "."),
     "BOT_NAME": os.getenv("BOT_NAME", "SRI-DISCORD-BOT"),
     "OWNER_ID": os.getenv("OWNER_ID", ""),
