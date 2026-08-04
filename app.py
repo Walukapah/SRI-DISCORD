@@ -4,6 +4,7 @@ import asyncio
 import discord
 from discord.ext import commands
 from pathlib import Path
+import time
 
 from config import config_manager, BASE_CONFIG
 from github_backup import backup
@@ -29,10 +30,7 @@ class SubBot(commands.Bot):
         )
     
     async def setup_hook(self):
-        # Load plugins
         await self.load_plugins()
-        
-        # Sync slash commands
         try:
             synced = await self.tree.sync()
             print(f"[BOT {self.bot_id}] Synced {len(synced)} slash commands")
@@ -87,7 +85,6 @@ class MainBot(commands.Bot):
         )
     
     async def setup_hook(self):
-        # Load plugins for main bot too
         plugins_dir = Path(__file__).parent / "plugin"
         if plugins_dir.exists():
             for file in plugins_dir.glob("*.py"):
@@ -98,7 +95,6 @@ class MainBot(commands.Bot):
                 except Exception as e:
                     print(f"[MAIN] Plugin load error: {e}")
         
-        # Add slash commands
         self.tree.add_command(discord.app_commands.Command(
             name="pair",
             description="Connect your own bot token as a sub-bot",
@@ -124,17 +120,14 @@ class MainBot(commands.Bot):
             print(f"[MAIN] Sync error: {e}")
     
     async def pair_command(self, interaction: discord.Interaction, token: str):
-        """Connect a sub-bot with your token"""
         await interaction.response.defer(ephemeral=True)
         
-        # Validate token format
         if not token or len(token) < 50:
             await interaction.followup.send("❌ Invalid bot token! Token must be at least 50 characters.", ephemeral=True)
             return
         
         bot_id = config_manager.get_bot_id(token)
         
-        # Check if already connected
         if bot_id in active_bots:
             await interaction.followup.send(
                 f"⚠️ This bot is already connected! (ID: `{bot_id}`)",
@@ -142,7 +135,6 @@ class MainBot(commands.Bot):
             )
             return
         
-        # Create config
         config = config_manager.create_config(
             token=token,
             owner_id=str(interaction.user.id),
@@ -153,7 +145,6 @@ class MainBot(commands.Bot):
             }
         )
         
-        # Start sub-bot
         try:
             bot = SubBot(config)
             await bot.start(token)
@@ -163,13 +154,11 @@ class MainBot(commands.Bot):
                 f"✅ **Sub-bot connected successfully!**\n\n"
                 f"🆔 Bot ID: `{bot_id}`\n"
                 f"👤 Owner: <@{interaction.user.id}>\n"
-                f"🔧 Prefix: `{config['PREFIX']}`\n"
-                f"📁 Config saved & backed up to GitHub\n\n"
+                f"🔧 Prefix: `{config['PREFIX']}`\n\n"
                 f"Use `{config['PREFIX']}help` to see commands!",
                 ephemeral=True
             )
             
-            # Backup to GitHub
             backup.save_file(
                 f"bot_{bot_id}.json",
                 {"status": "connected", "owner": str(interaction.user.id), "bot_id": bot_id},
@@ -192,7 +181,6 @@ class MainBot(commands.Bot):
             )
     
     async def bots_command(self, interaction: discord.Interaction):
-        """List all connected bots"""
         await interaction.response.defer(ephemeral=True)
         
         if not active_bots:
@@ -217,18 +205,14 @@ class MainBot(commands.Bot):
         await interaction.followup.send(embed=embed, ephemeral=True)
     
     async def unpair_command(self, interaction: discord.Interaction, bot_id: str = None):
-        """Disconnect a sub-bot"""
         await interaction.response.defer(ephemeral=True)
         
         if bot_id:
-            # Disconnect specific bot
             if bot_id not in active_bots:
                 await interaction.followup.send("❌ Bot not found!", ephemeral=True)
                 return
             
             bot = active_bots[bot_id]
-            
-            # Check ownership
             cfg = bot.bot_config
             if str(interaction.user.id) != cfg.get("OWNER_ID") and str(interaction.user.id) != BASE_CONFIG.get("OWNER_ID"):
                 await interaction.followup.send("❌ You don't own this bot!", ephemeral=True)
@@ -243,7 +227,6 @@ class MainBot(commands.Bot):
                 ephemeral=True
             )
         else:
-            # Find bot owned by user
             user_bot = None
             for bid, bot in active_bots.items():
                 if bot.bot_config.get("OWNER_ID") == str(interaction.user.id):
@@ -281,10 +264,8 @@ class MainBot(commands.Bot):
         print(f"[MAIN] Error: {error}")
 
 def validate_token(token: str) -> bool:
-    """Basic token validation"""
     if not token:
         return False
-    # Discord tokens are typically 59+ chars and have 2 dots
     parts = token.split('.')
     if len(parts) != 3:
         return False
@@ -292,31 +273,49 @@ def validate_token(token: str) -> bool:
         return False
     return True
 
+def print_token_help():
+    print("\n" + "=" * 70)
+    print("  ❌  MAIN_BOT_TOKEN IS MISSING OR INVALID!")
+    print("=" * 70)
+    print("\n  👉 Step 1: Go to https://discord.com/developers/applications")
+    print("  👉 Step 2: Create New Application → Bot tab → Add Bot")
+    print("  👉 Step 3: Click 'Reset Token' → Copy the token")
+    print("  👉 Step 4: In Render Dashboard, go to Environment Variables")
+    print("  👉 Step 5: Add: MAIN_BOT_TOKEN = your_copied_token_here")
+    print("  👉 Step 6: Redeploy the service")
+    print("\n  ⚠️  DO NOT put the token directly in config.py!")
+    print("  ⚠️  The token MUST be set as an environment variable!")
+    print("=" * 70 + "\n")
+
+def keep_alive():
+    """Keep process alive so Render doesn't restart endlessly"""
+    print("[MAIN] Keeping process alive for debugging...")
+    while True:
+        time.sleep(60)
+
 def run_main_bot():
     token = BASE_CONFIG.get("MAIN_BOT_TOKEN", "")
     
+    # Check if token exists
     if not token:
-        print("=" * 60)
-        print("[MAIN] ERROR: MAIN_BOT_TOKEN not set!")
-        print("[MAIN] Please set the MAIN_BOT_TOKEN environment variable.")
-        print("[MAIN] Get your token from: https://discord.com/developers/applications")
-        print("=" * 60)
-        sys.exit(1)
+        print_token_help()
+        print("[MAIN] ERROR: MAIN_BOT_TOKEN environment variable is empty!")
+        keep_alive()
+        return
     
+    # Check token format
     if not validate_token(token):
-        print("=" * 60)
-        print("[MAIN] ERROR: MAIN_BOT_TOKEN format looks invalid!")
-        print("[MAIN] Token should be like: Mxxxxxxxxxxxxxxxxxxxxxxxxxx.xxxxxx.xxxxxxxxxxxxxxxxxxxxxxxxxxx")
-        print("[MAIN] Please check your token.")
-        print("=" * 60)
-        sys.exit(1)
+        print_token_help()
+        print(f"[MAIN] ERROR: Token format is invalid! (Length: {len(token)})")
+        print(f"[MAIN] Token looks like: {token[:10]}... (should have 3 parts separated by dots)")
+        keep_alive()
+        return
     
     bot = MainBot()
     
     @bot.command(name="reload")
     @commands.is_owner()
     async def reload(ctx, extension: str):
-        """Reload a plugin"""
         try:
             await bot.reload_extension(f"plugin.{extension}")
             await ctx.send(f"✅ Reloaded `{extension}`")
@@ -326,19 +325,35 @@ def run_main_bot():
     @bot.command(name="shutdown")
     @commands.is_owner()
     async def shutdown(ctx):
-        """Shutdown all bots"""
         await ctx.send("🔴 Shutting down all bots...")
-        
         for bot_id, sub_bot in list(active_bots.items()):
             try:
                 await sub_bot.close()
                 print(f"[MAIN] Closed sub-bot {bot_id}")
             except:
                 pass
-        
         await bot.close()
     
-    bot.run(token)
+    # Try to start bot with proper error handling
+    try:
+        bot.run(token)
+    except discord.LoginFailure as e:
+        print("\n" + "=" * 70)
+        print("  ❌  DISCORD LOGIN FAILED - TOKEN IS INVALID!")
+        print("=" * 70)
+        print(f"\n  Error: {e}")
+        print(f"\n  Your token: {token[:15]}...{token[-5:]}")
+        print("\n  Possible reasons:")
+        print("  • Token was reset in Discord Developer Portal")
+        print("  • Token was copied incorrectly (missing characters)")
+        print("  • Bot was deleted from Developer Portal")
+        print("\n  Fix: Get a NEW token from https://discord.com/developers/applications")
+        print("       and update the MAIN_BOT_TOKEN environment variable.")
+        print("=" * 70 + "\n")
+        keep_alive()
+    except Exception as e:
+        print(f"[MAIN] Unexpected error: {e}")
+        keep_alive()
 
 if __name__ == "__main__":
     run_main_bot()
