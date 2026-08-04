@@ -8,7 +8,7 @@ from github import Github
 # ============================================
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "")
 GITHUB_OWNER = os.getenv("GITHUB_REPO_OWNER", "Walukapah")
-GITHUB_REPO = os.getenv("GITHUB_REPO_NAME", "SRI-DISCORD-BOT")
+GITHUB_REPO = os.getenv("GITHUB_REPO_NAME", "SRI-DISCORD-DATABASE")
 
 class GitHubBackup:
     def __init__(self):
