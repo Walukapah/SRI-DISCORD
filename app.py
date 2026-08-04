@@ -5,6 +5,8 @@ import discord
 from discord.ext import commands
 from pathlib import Path
 import time
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
 
 from config import config_manager, BASE_CONFIG
 from github_backup import backup
@@ -12,6 +14,40 @@ from github_backup import backup
 # Bot storage
 active_bots = {}  # bot_id -> bot instance
 
+# ============================================
+# SIMPLE HTTP SERVER FOR RENDER
+# ============================================
+class HealthHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header('Content-type', 'application/json')
+        self.end_headers()
+        
+        # Check main bot status
+        main_status = "online" if (hasattr(main_bot_instance, 'user') and main_bot_instance.user) else "offline"
+        
+        response = {
+            "status": "ok",
+            "service": "SRI-DISCORD-BOT",
+            "main_bot": main_status,
+            "sub_bots": len(active_bots),
+            "timestamp": time.time()
+        }
+        self.wfile.write(str(response).replace("'", '"').encode())
+    
+    def log_message(self, format, *args):
+        # Suppress HTTP server logs
+        pass
+
+def start_http_server():
+    port = int(os.getenv("PORT", "7860"))
+    server = HTTPServer(('0.0.0.0', port), HealthHandler)
+    print(f"[HTTP] Server running on port {port}")
+    server.serve_forever()
+
+# ============================================
+# DISCORD BOT CLASSES
+# ============================================
 class SubBot(commands.Bot):
     def __init__(self, config: dict, **kwargs):
         self.bot_config = config
@@ -263,55 +299,14 @@ class MainBot(commands.Bot):
             return
         print(f"[MAIN] Error: {error}")
 
-def validate_token(token: str) -> bool:
-    if not token:
-        return False
-    parts = token.split('.')
-    if len(parts) != 3:
-        return False
-    if len(token) < 50:
-        return False
-    return True
+# Global reference for health check
+main_bot_instance = None
 
-def print_token_help():
-    print("\n" + "=" * 70)
-    print("  ❌  MAIN_BOT_TOKEN IS MISSING OR INVALID!")
-    print("=" * 70)
-    print("\n  👉 Step 1: Go to https://discord.com/developers/applications")
-    print("  👉 Step 2: Create New Application → Bot tab → Add Bot")
-    print("  👉 Step 3: Click 'Reset Token' → Copy the token")
-    print("  👉 Step 4: In Render Dashboard, go to Environment Variables")
-    print("  👉 Step 5: Add: MAIN_BOT_TOKEN = your_copied_token_here")
-    print("  👉 Step 6: Redeploy the service")
-    print("\n  ⚠️  DO NOT put the token directly in config.py!")
-    print("  ⚠️  The token MUST be set as an environment variable!")
-    print("=" * 70 + "\n")
-
-def keep_alive():
-    """Keep process alive so Render doesn't restart endlessly"""
-    print("[MAIN] Keeping process alive for debugging...")
-    while True:
-        time.sleep(60)
-
-def run_main_bot():
-    token = BASE_CONFIG.get("MAIN_BOT_TOKEN", "")
-    
-    # Check if token exists
-    if not token:
-        print_token_help()
-        print("[MAIN] ERROR: MAIN_BOT_TOKEN environment variable is empty!")
-        keep_alive()
-        return
-    
-    # Check token format
-    if not validate_token(token):
-        print_token_help()
-        print(f"[MAIN] ERROR: Token format is invalid! (Length: {len(token)})")
-        print(f"[MAIN] Token looks like: {token[:10]}... (should have 3 parts separated by dots)")
-        keep_alive()
-        return
+def run_discord_bot(token):
+    global main_bot_instance
     
     bot = MainBot()
+    main_bot_instance = bot
     
     @bot.command(name="reload")
     @commands.is_owner()
@@ -334,7 +329,6 @@ def run_main_bot():
                 pass
         await bot.close()
     
-    # Try to start bot with proper error handling
     try:
         bot.run(token)
     except discord.LoginFailure as e:
@@ -342,18 +336,62 @@ def run_main_bot():
         print("  ❌  DISCORD LOGIN FAILED - TOKEN IS INVALID!")
         print("=" * 70)
         print(f"\n  Error: {e}")
-        print(f"\n  Your token: {token[:15]}...{token[-5:]}")
-        print("\n  Possible reasons:")
-        print("  • Token was reset in Discord Developer Portal")
-        print("  • Token was copied incorrectly (missing characters)")
-        print("  • Bot was deleted from Developer Portal")
-        print("\n  Fix: Get a NEW token from https://discord.com/developers/applications")
-        print("       and update the MAIN_BOT_TOKEN environment variable.")
+        print(f"\n  Your token starts with: {token[:15]}...")
+        print("\n  Fix: Get a NEW token from Discord Developer Portal")
+        print("       and update MAIN_BOT_TOKEN environment variable.")
         print("=" * 70 + "\n")
-        keep_alive()
     except Exception as e:
         print(f"[MAIN] Unexpected error: {e}")
-        keep_alive()
+
+def validate_token(token: str) -> bool:
+    if not token:
+        return False
+    parts = token.split('.')
+    if len(parts) != 3:
+        return False
+    if len(token) < 50:
+        return False
+    return True
+
+def print_token_help():
+    print("\n" + "=" * 70)
+    print("  ❌  MAIN_BOT_TOKEN IS MISSING OR INVALID!")
+    print("=" * 70)
+    print("\n  👉 Step 1: Go to https://discord.com/developers/applications")
+    print("  👉 Step 2: Create New Application → Bot tab → Add Bot")
+    print("  👉 Step 3: Click 'Reset Token' → Copy the token")
+    print("  👉 Step 4: In Render Dashboard, go to Environment Variables")
+    print("  👉 Step 5: Add: MAIN_BOT_TOKEN = your_copied_token_here")
+    print("  👉 Step 6: Redeploy the service")
+    print("\n  ⚠️  DO NOT put the token directly in config.py!")
+    print("=" * 70 + "\n")
+
+def main():
+    token = BASE_CONFIG.get("MAIN_BOT_TOKEN", "")
+    
+    # Validate token
+    if not token:
+        print_token_help()
+        print("[MAIN] ERROR: MAIN_BOT_TOKEN environment variable is empty!")
+        # Still start HTTP server so Render doesn't crash-loop
+        start_http_server()
+        return
+    
+    if not validate_token(token):
+        print_token_help()
+        print(f"[MAIN] ERROR: Token format is invalid! (Length: {len(token)})")
+        start_http_server()
+        return
+    
+    print("[MAIN] Starting Discord bot in background thread...")
+    print("[MAIN] Starting HTTP server for Render health checks...")
+    
+    # Start Discord bot in a background thread
+    bot_thread = threading.Thread(target=run_discord_bot, args=(token,), daemon=True)
+    bot_thread.start()
+    
+    # Start HTTP server in main thread (keeps Render happy)
+    start_http_server()
 
 if __name__ == "__main__":
-    run_main_bot()
+    main()
