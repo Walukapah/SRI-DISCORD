@@ -82,7 +82,8 @@ class SubBot(commands.Bot):
         if not plugins_dir.exists():
             return
         for file in plugins_dir.glob("*.py"):
-            if file.name.startswith("_"):
+            # conectbot.py Sub Bot වලට Load නොවෙන විදියට Skip කරමු
+            if file.name.startswith("_") or file.stem == "conectbot":
                 continue
             try:
                 await self.load_extension(f"plugin.{file.stem}")
@@ -120,8 +121,14 @@ class MainBot(commands.Bot):
             intents=intents,
             help_command=None
         )
+        # Plugin වලට Access දෙන්න Attributes
+        self.active_bots = active_bots
+        self.config_manager = config_manager
+        self.base_config = BASE_CONFIG
+        self.SubBot = SubBot
     
     async def setup_hook(self):
+        # Plugin Load කරමු (conectbot.py ඇතුළු)
         plugins_dir = Path(__file__).parent / "plugin"
         if plugins_dir.exists():
             for file in plugins_dir.glob("*.py"):
@@ -129,108 +136,15 @@ class MainBot(commands.Bot):
                     continue
                 try:
                     await self.load_extension(f"plugin.{file.stem}")
+                    print(f"[MAIN] Loaded plugin: {file.stem}")
                 except Exception as e:
-                    print(f"[MAIN] Plugin load error: {e}")
-        
-        self.tree.add_command(discord.app_commands.Command(
-            name="pair", description="Connect your own bot token as a sub-bot",
-            callback=self.pair_command
-        ))
-        self.tree.add_command(discord.app_commands.Command(
-            name="bots", description="List all connected sub-bots",
-            callback=self.bots_command
-        ))
-        self.tree.add_command(discord.app_commands.Command(
-            name="unpair", description="Disconnect your sub-bot",
-            callback=self.unpair_command
-        ))
+                    print(f"[MAIN] Plugin load error ({file.stem}): {e}")
         
         try:
             synced = await self.tree.sync()
             print(f"[MAIN] Synced {len(synced)} slash commands")
         except Exception as e:
             print(f"[MAIN] Sync error: {e}")
-    
-    async def pair_command(self, interaction: discord.Interaction, token: str):
-        await interaction.response.defer(ephemeral=True)
-        
-        if not token or len(token) < 50:
-            await interaction.followup.send("❌ Invalid bot token! Must be 50+ chars.", ephemeral=True)
-            return
-        
-        bot_id = config_manager.get_bot_id(token)
-        if bot_id in active_bots:
-            await interaction.followup.send(f"⚠️ Bot already connected! (ID: `{bot_id}`)", ephemeral=True)
-            return
-        
-        config = config_manager.create_config(
-            token=token, owner_id=str(interaction.user.id),
-            extra={"PAIRED_BY": str(interaction.user.id), "PAIRED_BY_NAME": interaction.user.name,
-                   "GUILD_ID": str(interaction.guild_id) if interaction.guild_id else None}
-        )
-        
-        try:
-            bot = SubBot(config)
-            await bot.start(token)
-            active_bots[bot_id] = bot
-            await interaction.followup.send(
-                f"✅ **Sub-bot connected!**\n🆔 `{bot_id}` | Prefix: `{config['PREFIX']}`", ephemeral=True
-            )
-            backup.save_file(f"bot_{bot_id}.json",
-                {"status": "connected", "owner": str(interaction.user.id), "bot_id": bot_id},
-                f"Bot {bot_id} connected")
-        except discord.LoginFailure:
-            config_manager.delete_config(bot_id)
-            await interaction.followup.send("❌ **Invalid token!** Check https://discord.com/developers/applications", ephemeral=True)
-        except Exception as e:
-            config_manager.delete_config(bot_id)
-            await interaction.followup.send(f"❌ Error: `{str(e)}`", ephemeral=True)
-    
-    async def bots_command(self, interaction: discord.Interaction):
-        await interaction.response.defer(ephemeral=True)
-        if not active_bots:
-            await interaction.followup.send("📭 No sub-bots connected.", ephemeral=True)
-            return
-        
-        embed = discord.Embed(title="🤖 Connected Sub-Bots", color=discord.Color.blue(),
-                              description=f"Total: {len(active_bots)}")
-        for bot_id, bot in active_bots.items():
-            cfg = bot.bot_config
-            status = "🟢 Online" if bot.is_ready() else "🟡 Connecting"
-            embed.add_field(name=f"Bot `{bot_id}`",
-                value=f"Status: {status}\nName: `{bot.user}`\nPrefix: `{cfg.get('PREFIX', '.')}`", inline=False)
-        await interaction.followup.send(embed=embed, ephemeral=True)
-    
-    async def unpair_command(self, interaction: discord.Interaction, bot_id: str = None):
-        await interaction.response.defer(ephemeral=True)
-        
-        if bot_id:
-            if bot_id not in active_bots:
-                await interaction.followup.send("❌ Bot not found!", ephemeral=True)
-                return
-            bot = active_bots[bot_id]
-            cfg = bot.bot_config
-            if str(interaction.user.id) != cfg.get("OWNER_ID") and str(interaction.user.id) != BASE_CONFIG.get("OWNER_ID"):
-                await interaction.followup.send("❌ You don't own this bot!", ephemeral=True)
-                return
-            await bot.close()
-            del active_bots[bot_id]
-            config_manager.delete_config(bot_id)
-            await interaction.followup.send(f"✅ Bot `{bot_id}` disconnected!", ephemeral=True)
-        else:
-            user_bot = None
-            for bid, bot in active_bots.items():
-                if bot.bot_config.get("OWNER_ID") == str(interaction.user.id):
-                    user_bot = (bid, bot)
-                    break
-            if not user_bot:
-                await interaction.followup.send("❌ You have no bots! Use `/unpair <bot_id>`", ephemeral=True)
-                return
-            bid, bot = user_bot
-            await bot.close()
-            del active_bots[bid]
-            config_manager.delete_config(bid)
-            await interaction.followup.send(f"✅ Your bot `{bid}` disconnected!", ephemeral=True)
     
     async def on_ready(self):
         print(f"[MAIN] ✅ Bot logged in as {self.user} (ID: {self.user.id})")
@@ -325,6 +239,7 @@ def main():
         print("=" * 60)
         print("\n  Set it in Render Environment Variables and redeploy.")
         print("=" * 60 + "\n")
+        return
     
     # Start Discord bot in background thread
     print("[MAIN] Starting Discord bot thread...")
